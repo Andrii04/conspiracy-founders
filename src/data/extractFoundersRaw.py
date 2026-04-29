@@ -53,8 +53,7 @@ def findFounders():
         }
         print(f"Subreddit: {row.name}, Founder Data: {post_data}\n\n")
         result_data.append(post_data)
-
-        time.sleep(0.5)
+        time.sleep(0.1)
 
     subredditFirstPosts = pd.DataFrame(result_data)
     subredditFirstPosts.set_index("original_index", inplace=True)
