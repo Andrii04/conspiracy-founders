@@ -17,8 +17,8 @@ def extract_features():
     subreddits_url = "/api/users/interactions/subreddits"
 
     df = pd.read_csv("data/raw/conspiracy_founders_clean.csv", index_col=0)
-
-    for row in df.iloc[500:1000].itertuples():
+    
+    for row in df.iloc[1500:].itertuples():
         username = row.author
         params = {
             "author" : username,
@@ -51,7 +51,7 @@ def extract_features():
         response = requests.get(url, params).json()
         founderSubredditsRaw = response.get("data")
         if founderSubredditsRaw:
-            founderSubredditsClean = [subredditData["subreddit"] for subredditData in founderSubredditsRaw]
+            founderSubredditsClean = founderSubredditsRaw
         else:
             founderSubredditsClean = []
 
@@ -70,9 +70,22 @@ def extract_features():
         time.sleep(0.1)
         
     # save dataset
-    df = pd.DataFrame(foundersFeatures)
-    #df.to_csv("data/raw/founders_features.csv")
-    df.to_csv("data/raw/founders_features.csv", mode='a', index=False, header=False)
+    df_new = pd.DataFrame(foundersFeatures)
+    df_new.to_csv("data/raw/founders_features.csv", mode='a', header=False)
+    #df_new_section.to_csv("data/raw/founders_features_firstHalf.csv", mode='a', header=False)
 
 if __name__ == "__main__":
-    extract_features()
+    #extract_features()
+
+    '''
+    df = pd.read_csv("data/raw/founders_features.csv", index_col=0)
+    first_part = df.iloc[:500]
+    last_part = df.iloc[1000:]
+    df_new = pd.concat([first_part, last_part])
+    df_new.reset_index(drop=True, inplace=True)
+    df_new.to_csv("data/raw/founders_features_firstHalf.csv")
+    '''
+
+    df = pd.read_csv("data/raw/founders_features.csv")
+    df.reset_index(drop=True, inplace=True)
+    df.to_csv("data/raw/founders_features.csv")
