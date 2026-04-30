@@ -86,6 +86,6 @@ if __name__ == "__main__":
     df_new.to_csv("data/raw/founders_features_firstHalf.csv")
     '''
 
-    df = pd.read_csv("data/raw/founders_features.csv")
-    df.reset_index(drop=True, inplace=True)
+    df = pd.read_csv("data/raw/founders_features.csv",  index_col=0)
+    df.drop(columns=["Unnamed: 0"], axis=1, inplace=True)
     df.to_csv("data/raw/founders_features.csv")
