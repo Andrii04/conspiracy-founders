@@ -29,4 +29,11 @@ def cleanFoundersRaw():
 
 
 if __name__ == "__main__":
-    cleanFoundersRaw()
+    #cleanFoundersRaw()
+    df1 = pd.read_csv("/home/andri/conspiracy-founders/data/raw/conspiracy_founders_clean.csv", index_col=0)
+    df1.drop_duplicates(subset="author", keep="first", inplace=True)
+    df2 = pd.read_csv("/home/andri/conspiracy-founders/data/raw/founders_features_clean.csv", index_col=0)
+    df = pd.merge(df2, df1, how="inner", left_on="username", right_on="author")
+    df.reset_index(drop=True, inplace=True)
+    df.to_csv("/home/andri/conspiracy-founders/data/raw/conspiracy_founders_clean2.csv")
+    print(df.tail(5))
