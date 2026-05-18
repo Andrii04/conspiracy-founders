@@ -13,4 +13,6 @@ ruff
 scikit-learn
 tqdm
 typer
+requests
+aiohttp
 -e .
