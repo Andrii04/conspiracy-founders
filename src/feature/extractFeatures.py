@@ -16,10 +16,10 @@ def extract_features():
     users_url = "/api/users/search"
     subreddits_url = "/api/users/interactions/subreddits"
 
-    df = pd.read_csv("data/raw/conspiracy_founders_clean.csv", index_col=0)
+    df = pd.read_csv("data/interim/founders.csv", index_col=0)
     
-    for row in df.iloc[1500:].itertuples():
-        username = row.author
+    for row in df.iloc[2000:].itertuples():
+        username = row.founder
         params = {
             "author" : username,
             "limit" : 1
@@ -27,20 +27,28 @@ def extract_features():
 
         url = base_url + users_url
         response = requests.get(url, params=params).json().get("data")
+        if response == None or len(response) == 0:
+            continue
         responseData = response[0]
         founderMetaData = responseData.get("_meta")
         
         # Active Since
-        if founderMetaData["earliest_comment_at"]:
-            active_since = min(founderMetaData["earliest_comment_at"], founderMetaData["earliest_post_at"])
+        c_time = founderMetaData.get("earliest_comment_at")
+        p_time = founderMetaData.get("earliest_post_at")
+        
+        if c_time is not None and p_time is not None:
+            active_since = min(c_time, p_time)
+        elif c_time is not None:
+            active_since = c_time
+        elif p_time is not None:
+            active_since = p_time
         else:
-            active_since = founderMetaData["earliest_post_at"]
+            active_since = None
 
         # Number of Contributions
-        if founderMetaData["num_comments"]:
-            num_contributions = founderMetaData["num_posts"] + founderMetaData["num_comments"]
-        else:
-            num_contributions = founderMetaData["num_posts"]
+        c_num = founderMetaData.get("num_comments") or 0
+        p_num = founderMetaData.get("num_posts") or 0
+        num_contributions = c_num + p_num
 
         # Subreddits Active on
         params = {
@@ -71,21 +79,22 @@ def extract_features():
         
     # save dataset
     df_new = pd.DataFrame(foundersFeatures)
-    df_new.to_csv("data/raw/founders_features.csv", mode='a', header=False)
+    df_new.to_csv("data/raw/real_founders_features.csv", mode='a', header=False)
     #df_new_section.to_csv("data/raw/founders_features_firstHalf.csv", mode='a', header=False)
 
 if __name__ == "__main__":
     #extract_features()
+    
+    df = pd.read_csv("/home/andri/conspiracy-founders/data/raw/realFounders_features.csv", index_col=0)
+    print(df.info())
+    df.dropna(subset=["username"], inplace=True)
+    df.drop_duplicates(subset="username", keep="first", inplace=True)
+    df = df[ df["subreddits"] != "[]" ]
+    df.reset_index(drop=True, inplace=True)
 
-    '''
-    df = pd.read_csv("data/raw/founders_features.csv", index_col=0)
-    first_part = df.iloc[:500]
-    last_part = df.iloc[1000:]
-    df_new = pd.concat([first_part, last_part])
-    df_new.reset_index(drop=True, inplace=True)
-    df_new.to_csv("data/raw/founders_features_firstHalf.csv")
-    '''
+    print(df.info())
+    print(df.head(5))
+    print(df.tail(5))
 
-    df = pd.read_csv("data/raw/founders_features.csv",  index_col=0)
-    df.drop(columns=["Unnamed: 0"], axis=1, inplace=True)
-    df.to_csv("data/raw/founders_features.csv")
+    df.to_csv("/home/andri/conspiracy-founders/data/interim/realFounders_features_clean.csv")
+    
