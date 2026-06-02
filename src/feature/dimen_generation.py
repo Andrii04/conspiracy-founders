@@ -2,9 +2,9 @@ import numpy as np
 import pandas as pd
 
 
-def load_embedding(embedding_folder = '../../data/external/embedding'):
-    vectors_path =  f"{embedding_folder}/vectors.tsv"
-    metadata_path =  f"{embedding_folder}/metadata.tsv"
+def load_embedding(embedding_folder = 'data/external/embedding-'):
+    vectors_path =  f"{embedding_folder}vectors.tsv"
+    metadata_path =  f"{embedding_folder}metadata.tsv"
     meta = pd.read_csv(metadata_path, sep='\t', header=None)
 
     meta.columns = meta.iloc[0]

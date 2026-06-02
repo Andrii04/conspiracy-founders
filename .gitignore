@@ -189,5 +189,4 @@ cython_debug/
 .pypirc
 
 # Data files
-data/interim/foundersData.csv
-data/interim/realFounders_features_clean.csv
+/data/
