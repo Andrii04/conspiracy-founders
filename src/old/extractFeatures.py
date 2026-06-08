@@ -83,18 +83,9 @@ def extract_features():
     #df_new_section.to_csv("data/raw/founders_features_firstHalf.csv", mode='a', header=False)
 
 if __name__ == "__main__":
-    #extract_features()
-    
-    df = pd.read_csv("/home/andri/conspiracy-founders/data/raw/realFounders_features.csv", index_col=0)
-    print(df.info())
-    df.dropna(subset=["username"], inplace=True)
-    df.drop_duplicates(subset="username", keep="first", inplace=True)
-    df = df[ df["subreddits"] != "[]" ]
-    df.reset_index(drop=True, inplace=True)
+    oldFeatures = pd.read_csv("data/interim/foundersFeatures_FINAL.csv", index_col=0)
+    foundersData = pd.read_csv("data/interim/foundersData_FINAL.csv", index_col=0)
 
-    print(df.info())
-    print(df.head(5))
-    print(df.tail(5))
+    print(foundersData.info())
 
-    df.to_csv("/home/andri/conspiracy-founders/data/interim/realFounders_features_clean.csv")
     

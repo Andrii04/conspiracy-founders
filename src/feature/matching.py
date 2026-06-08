@@ -134,5 +134,7 @@ def match_users(anchors, candidates):
 
 if __name__ == "__main__":
     df_matching = match_users(df_anchors, df_candidates)
-    df_matching.to_csv("data/raw/matching_matrix_raw.csv")
+    # df_matching.to_csv("data/raw/matching_matrix_raw.csv")
+
+    # 
     print(df_matching.notna().sum(axis=1))

@@ -7,6 +7,8 @@ def splitDataset():
     df_anchors = df_features.sample(frac=0.25, random_state=42)
     df_candidates = df_features.drop(df_anchors.index)
 
+    # meglio invece di sample, prendere i primi più alti nella scala conspiracy (quindi non randomico)
+    # sort su colonna conspiracy e poi .head della dimensione che vogliamo
     df_anchors = df_anchors.reset_index(drop=True)
     df_candidates = df_candidates.reset_index(drop=True)
 
