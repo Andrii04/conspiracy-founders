@@ -9,10 +9,9 @@ pandas
 pip
 pytest
 python-dotenv
-ruff
 scikit-learn
 tqdm
 typer
 requests
-aiohttp
+
 -e .

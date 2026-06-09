@@ -4,6 +4,7 @@ import ast
 from gensim.models import KeyedVectors
 from tqdm import tqdm
 from dimen_generation import load_embedding
+import json
 
 PATH_ANCHORS = "data/interim/anchors_test.csv"
 PATH_CANDIDATES = "data/interim/candidates_test.csv"
@@ -59,10 +60,10 @@ user_info = {}
 
 # Creazione bin per num contributi
 def contributions_bins(df):
-    bins = [0, 100, 250, 500, 750, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000, 12500, 15000, 17500, 20000, 40000, 60000, 80000, 100000, np.inf]
-    bin_labels = ["0-100", "100-250", "250-500", "500-750", "750-1000", "1000-2000", "2000-3000", "3000-4000", "4000-5000", "5000-6000", "6000-7000", "7000-8000", "8000-9000", "9000-10000", "10000-12500", "12500-15000", "15000-17500", "17500-20000", "20000-40000", "40000-60000", "60000-80000", "80000-100000", "100000+"]
+    bins = [0, 50, 200, 500, 1000, 3000, 5000, np.inf]
+    bin_labels = ["0-50", "50-200", "200-500", "500-1000", "1000-3000", "3000-5000", "5000+"]
 
-    df["num_contrib_bin"] = pd.cut(df["num contributions"], bins=bins, labels=bin_labels)
+    df["num_contrib_bin"] = pd.cut(df["num contributions"], bins=bins, labels=bin_labels, include_lowest=True)
     df["first_activity_year"] = pd.to_datetime(df["active since"], unit='s').dt.year
 
 def fill_documents(df):
@@ -88,53 +89,58 @@ fill_documents(df_candidates)
 # FUNZIONE PROVVISORIA (solo per vedere se funziona matching, test matching FRA FOUNDER) output: matrice
 # dove matrice[i][j] = distanza fra user i e user j
 #anchor: founders, candidates: user boh chissà quanti
-def match_users(anchors, candidates):
 
+def match_users(df_anchors, df_candidates):
+    # Allineamento con i documenti disponibili
     anchors = [u for u in df_anchors["username"] if u in user_documents]
     candidates = [u for u in df_candidates["username"] if u in user_documents]
-    # dividere set founder in 2 per test (modificare sript)
 
-    n_anchors = len(anchors)
-    n_candidates = len(candidates)
-
-    # Inizializziamo matrice con NaN (che significa nessun match calcolato)
-    matrix = np.full((n_anchors, n_candidates), np.nan)
-
-    # distanza di un utene con se stesso è 0
+    # INIZIALIZZAZIONE DIZIONARIO DI DIZIONARI (Sparse Representation)
+    matching_dict = {}
 
     print("Avvio matching con filtraggio per bin contributi e anno prima attività")
 
-    for i in tqdm(range(n_anchors)):
-        user_a = anchors[i]
+    # Ciclo diretto sugli elementi (senza indici i, j, molto più pythonic)
+    for user_a in tqdm(anchors):
+        # Inizializziamo il dizionario interno per l'anchor corrente
+        matching_dict[user_a] = {}
         info_a = user_info[user_a]
 
-        for j in range(n_candidates):
-            user_b = candidates[j]
-
+        for user_b in candidates:
+            # CASO 1: Identità (Distanza zero con se stessi)
             if user_a == user_b:
-                matrix[i][j] = 0
+                matching_dict[user_a][user_b] = 0.0
+                continue  # Salta direttamente al prossimo candidato, ottimizzando i tempi
 
             info_b = user_info[user_b]
 
+            # Controllo dei vincoli del Blocco
             same_contrib_bin = (info_a["num_contrib_bin"] == info_b["num_contrib_bin"])
             same_year = (info_a["first_activity_year"] == info_b["first_activity_year"])
 
+            # CASO 2: Superamento del Blocco (Calcolo effettivo della WMD)
             if same_contrib_bin and same_year:
-                # Calcolo WMD subreddit
                 distance = kv_model.wmdistance(user_documents[user_a], user_documents[user_b])
-                matrix[i, j] = distance
+                # Salviamo nel dizionario interno solo se è un match valido
+                matching_dict[user_a][user_b] = distance
     
-    # trasformiamo in DataFrame
-    df_matching = pd.DataFrame(matrix, index=anchors, columns=candidates)
-    print("Matrix complete")
-
-    return df_matching
-
+    print("Matching completato con successo.")
+    return matching_dict
 
 
 if __name__ == "__main__":
-    df_matching = match_users(df_anchors, df_candidates)
-    # df_matching.to_csv("data/raw/matching_matrix_raw.csv")
+    
+    matching_dict = match_users(df_anchors, df_candidates)
 
-    # 
-    print(df_matching.notna().sum(axis=1))
+    #salvataggio
+    path_output_json = "../data/raw/matching_dict_raw.json"
+    with open(path_output_json, "w") as f:
+        json.dump(matching_dict, f, indent=4)
+
+
+    print("\nCONTEGGIO CANDIDATI VALIDI PER ANCHOR")
+    
+    # Mostriamo i primi 20 risultati come diagnostica per non intasare l'output
+    for anchor in list(matching_dict.keys())[:20]:
+        num_matches = len(matching_dict[anchor])
+        print(f"Anchor: {anchor:<25} | Candidati idonei nel bin: {num_matches}")
