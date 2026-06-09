@@ -60,8 +60,8 @@ user_info = {}
 
 # Creazione bin per num contributi
 def contributions_bins(df):
-    bins = [0, 50, 200, 500, 1000, 3000, 5000, np.inf]
-    bin_labels = ["0-50", "50-200", "200-500", "500-1000", "1000-3000", "3000-5000", "5000+"]
+    bins = [0, 50, 200, 500, 1000, 2500, np.inf]
+    bin_labels = ["0-50", "50-200", "200-500", "500-1000", "1000-2500", "2500+"]
 
     df["num_contrib_bin"] = pd.cut(df["num contributions"], bins=bins, labels=bin_labels, include_lowest=True)
     df["first_activity_year"] = pd.to_datetime(df["active since"], unit='s').dt.year
