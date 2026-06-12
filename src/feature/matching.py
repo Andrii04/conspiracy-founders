@@ -6,8 +6,8 @@ from tqdm import tqdm
 from dimen_generation import load_embedding
 import json
 
-PATH_ANCHORS = "data/interim/anchors_test.csv"
-PATH_CANDIDATES = "data/interim/candidates_test.csv"
+PATH_ANCHORS = "data/interim/anchors.csv"
+PATH_CANDIDATES = "data/interim/candidates.csv"
 
 df_anchors = pd.read_csv(PATH_ANCHORS, index_col=0)
 df_candidates = pd.read_csv(PATH_CANDIDATES, index_col=0)
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     matching_dict = match_users(df_anchors, df_candidates)
 
     #salvataggio
-    path_output_json = "../data/raw/matching_dict_raw.json"
+    path_output_json = "data/raw/matching_dict_raw.json"
     with open(path_output_json, "w") as f:
         json.dump(matching_dict, f, indent=4)
 
