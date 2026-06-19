@@ -1,0 +1,4 @@
+# constants, thresholds, and paths to use in the project
+
+thresholds:
+  OBSERVATION_WINDOW_SECONDS: 3 * 30 * 24 * 60 * 60

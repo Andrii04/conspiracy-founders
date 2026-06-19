@@ -5,6 +5,15 @@ import pulp
 with open("data/raw/matching_dict_raw.json", "r") as f:
     matching_data = json.load(f)
 
+all_wmd_values = [wmd for candidate_dicts in matching_data.values() for wmd in candidate_dicts.values()]
+if all_wmd_values:
+    max_wmd = max(all_wmd_values)
+    matching_wmd_value = max_wmd + 1
+else:
+    matching_wmd_value = 10
+
+print(f"matching_wmd_value == {matching_wmd_value}\n")
+
 # Inizializza il problema di ottimizzazione lineare (Massimizzazione)
 prob = pulp.LpProblem("Ottimizzazione_Matching_Reddit", pulp.LpMaximize)
 # (splver cercherà valore più alto possibile con la formula che gli diamo) (greedy af)
@@ -19,11 +28,11 @@ for anchor, candidates in matching_data.items():
         )
 
 # Definisce la funzione obiettivo combinata
-# Usiamo la costante 10 per dare priorità assoluta al numero di match stabili
+# Usiamo la costante per dare priorità assoluta al numero di match stabili
 obj_terms = []
 for anchor, candidates in matching_data.items():
     for candidate, wmd in candidates.items():
-        obj_terms.append((10.0 - wmd) * x[anchor][candidate])
+        obj_terms.append((matching_wmd_value - wmd) * x[anchor][candidate])
         # così se xij è 0 (interruttore spento) match non viene attivato
 prob += pulp.lpSum(obj_terms)
 
@@ -77,7 +86,7 @@ if match_count > 0:
 
 
 
-output_path = "data/interim/matching_dict_optimized.json"
+output_path = "data/interim/matching_dict_optimized2.json"
 
 
 with open(output_path, "w") as f:
