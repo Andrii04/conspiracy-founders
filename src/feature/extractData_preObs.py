@@ -31,7 +31,7 @@ def extract_features_pre_obs():
         username = row.founder
         founding_date = row.subreddit_creation_date
         
-        # CALCOLO SBARRAMENTO TEMPORALE (6 mesi prima del founding event)
+        # CALCOLO SBARRAMENTO TEMPORALE (3 mesi prima del founding event)
         cutoff_time = int(founding_date - THREE_MONTHS_SECONDS)
 
         # 2. CHIAMATA API 1: Anzianità Globale dell'Account
