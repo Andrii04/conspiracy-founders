@@ -46,11 +46,11 @@ def log_failure(username, filename):
         with open(filepath, "w") as f:
             json.dump(failed_users, f, indent=4)
 
-def fetch_with_retry(url, params, max_retries=3):
+def fetch_with_retry(url, params, max_retries=5):
     """Run API request with retry on 50x errors."""
     for attempt in range(max_retries):
         try:
-            response = requests.get(url, params=params, timeout=30)
+            response = requests.get(url, params=params, timeout=180)
             if response.status_code == 200:
                 return response
             elif response.status_code in [500, 502, 503, 504]:
@@ -570,4 +570,4 @@ def extract_acquaintances_subreddits():
 
 if __name__ == "__main__":
     # Call needed functions here
-    pass
+    extract_acquaintances_histograms()
