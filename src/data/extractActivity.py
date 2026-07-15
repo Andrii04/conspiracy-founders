@@ -4,13 +4,16 @@ import time
 import json
 import os
 
+import urllib3.util
+# urllib3.util.connection.HAS_IPV6 = False
+
 matching_dict_path = "data/interim/matching_dict_optimized.json"
 users_folder_path = "data/raw/FOUNDERS_DATA/"
 FAILED_LOGS_DIR = "data/raw/FAILED_LOGS/"
 
 os.makedirs(FAILED_LOGS_DIR, exist_ok=True)
 
-base_url = "https://arctic-shift.photon-reddit.com/"
+base_url = "https://arctic-shift.photon-reddit.com"
 
 OBSERVATION_WINDOW_SECONDS = 3 * 30 * 24 * 60 * 60
 
@@ -26,6 +29,7 @@ candidates = [candidate["candidate"] for candidate in matching_dict.values()]
 founders = anchors + candidates
 
 print(f"Founder usernames: {founders}\n")
+
 
 # Resume and retry helpers
 
@@ -46,28 +50,25 @@ def log_failure(username, filename):
         with open(filepath, "w") as f:
             json.dump(failed_users, f, indent=4)
 
-def fetch_with_retry(url, params, max_retries=5):
-    """Run API request with retry on 50x errors."""
+def fetch_with_retry(url, params, max_retries=3):
+    """Esegue la chiamata API con retry automatico in caso di Gateway Error (50x)."""
     for attempt in range(max_retries):
         try:
-            response = requests.get(url, params=params, timeout=180)
+            response = requests.get(url, params=params, timeout=100)
             if response.status_code == 200:
                 return response
             elif response.status_code in [500, 502, 503, 504]:
                 print(f"Gateway Error {response.status_code}. Retry {attempt+1}/{max_retries}...")
                 time.sleep(3)
             else:
-                return response  # Non-retriable response
+                return response # Errore diverso (es. 400, 404), restituisce per essere gestito
         except requests.exceptions.RequestException as e:
-            print(f"Connection error: {e}. Retry {attempt+1}/{max_retries}...")
+            print(f"Errore di connessione: {e}. Retry {attempt+1}/{max_retries}...")
             time.sleep(3)
-            
-    return None  # All retries failed
 
 
 # Extraction blocks
 
-# SUCCESFULLY EXTRACTED
 # Extract posts and comments
 def extract_posts_comments():
     
@@ -184,7 +185,6 @@ def extract_posts_comments():
             print(f"Saved {len(comments_data)} comments by user {username}\n")
 
 
-# NEED TO EXTRACT
 # Extract interactions histogram
 def extract_acquaintances_histograms():
     interactions_url = "/api/users/interactions/users"
@@ -217,6 +217,7 @@ def extract_acquaintances_histograms():
         before = subreddit_creation_date
         after = subreddit_creation_date - OBSERVATION_WINDOW_SECONDS
 
+        # Aggregation endpoint: fetched in a single request
         params = {
             "author": username, 
             "before": before, 
@@ -246,9 +247,9 @@ def extract_acquaintances_histograms():
 
         print(f"Saved {len(interactions_data)} acquaintance interaction records for user {username}\n")
         
-        time.sleep(3.0)  # Rate limit between users
+        time.sleep(3.0) 
 
-# NEED TO EXTRACT
+
 # Extract interactions list
 def extract_interactions_list():
     interactions_list_url = "/api/users/interactions/users/list"
@@ -281,24 +282,45 @@ def extract_interactions_list():
         before = subreddit_creation_date
         after = subreddit_creation_date - OBSERVATION_WINDOW_SECONDS
 
-        params = {
-            "author": username, 
-            "before": before, 
-            "after": after,   
-            "limit" : 100000
-        }
-        
-        response = fetch_with_retry(url=url, params=params) 
+        interactions_list_data = []
+        current_before = before
+        user_success = True
 
-        if not response or response.status_code != 200:
-            code = response.status_code if response else "Timeout"
-            print(f"HTTP error {code} on interactions for {username}; skipping.\n")
+        while True:
+            params = {
+                "author": username, 
+                "before": current_before, 
+                "after": after,   
+                "limit" : 20
+            }
+            
+            response = fetch_with_retry(url=url, params=params) 
+
+            if not response or response.status_code != 200:
+                code = response.status_code if response else "Timeout"
+                print(f"HTTP error {code} on interactions list for {username}. Skipping.\n")
+                user_success = False
+                break
+
+            responseData = response.json()
+            batch_data = responseData.get("data", [])
+            
+            if not batch_data:
+                break
+
+            interactions_list_data.extend(batch_data)
+
+            if len(batch_data) < 20:
+                break
+
+            current_before = int(batch_data[-1]["created_utc"]) - 1
+            print("succesfully extracted batch\n")
+            time.sleep(0.2)
+
+        if not user_success:
             log_failure(username, "failed_interactions_list.json")
             continue
 
-        responseData = response.json()
-        interactions_list_data = responseData.get("data", [])
-        
         if not interactions_list_data:
             print(f"No interactions found for {username} in the observation window.\n")
             pd.DataFrame().to_csv(path_interactions_list_out, index=False)
@@ -311,7 +333,7 @@ def extract_interactions_list():
         
         time.sleep(3.0) 
 
-# NEED TO EXTRACT
+# SUCCESFULLY EXTRACTED
 # Extract commented posts
 def extract_posts_commented():
 
@@ -394,7 +416,7 @@ def extract_posts_commented():
 
         time.sleep(1.0)
 
-# NEED TO EXTRACT
+
 # Extract received comments
 def extract_comments_received():
     comments_url = "/api/comments/ids"
@@ -477,7 +499,7 @@ def extract_comments_received():
 
         time.sleep(1.0)
 
-# NEED TO EXTRACT
+
 # Extract acquaintances subreddits
 def extract_acquaintances_subreddits():
     subreddits_url = "/api/users/interactions/subreddits"
@@ -532,6 +554,7 @@ def extract_acquaintances_subreddits():
 
         for aq in acquaintances:
 
+            # Aggregation endpoint: fetched in a single request
             params = {"author" : aq, "before" : before, "limit" : 100000}
             response = fetch_with_retry(url=url, params=params)
             
@@ -570,4 +593,4 @@ def extract_acquaintances_subreddits():
 
 if __name__ == "__main__":
     # Call needed functions here
-    extract_acquaintances_histograms()
+    extract_interactions_list()
