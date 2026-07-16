@@ -51,20 +51,47 @@ def log_failure(username, filename):
             json.dump(failed_users, f, indent=4)
 
 def fetch_with_retry(url, params, max_retries=3):
-    """Esegue la chiamata API con retry automatico in caso di Gateway Error (50x)."""
+    """Esegue la chiamata API con retry automatico in caso di errore, 
+    stampando l'URL esatto, il codice di stato e i dettagli dell'errore."""
     for attempt in range(max_retries):
         try:
             response = requests.get(url, params=params, timeout=100)
             if response.status_code == 200:
                 return response
-            elif response.status_code in [500, 502, 503, 504]:
-                print(f"Gateway Error {response.status_code}. Retry {attempt+1}/{max_retries}...")
-                time.sleep(3)
+            
+            # --- BLOCCO DIAGNOSTICA ERRORE HTTP ---
+            print("\n" + "!" * 60)
+            print(f"[HTTP ERRORE] Tentativo {attempt+1}/{max_retries} fallito!")
+            print(f"URL Richiesto: {response.url}")  # Questo è comodissimo da copiare nel browser!
+            print(f"Status Code:   {response.status_code} ({response.reason})")
+            
+            # Prova a leggere la risposta come JSON formattato per mostrare i dettagli dell'errore, altrimenti stampa testo semplice
+            try:
+                error_details = response.json()
+                print("Dettaglio Errore (JSON):")
+                print(json.dumps(error_details, indent=4))
+            except Exception:
+                # Se non è un JSON, stampa i primi 1000 caratteri del testo di errore (evitando spam a schermo)
+                print(f"Dettaglio Errore (Testo):\n{response.text[:1000]}")
+            print("!" * 60 + "\n")
+            # --------------------------------------
+
+            if response.status_code in [500, 502, 503, 504, 522, 524, 400, 403, 404, 422, 429]:
+                print(f"Attendo 5 secondi prima del retry...")
+                time.sleep(5)
             else:
-                return response # Errore diverso (es. 400, 404), restituisce per essere gestito
+                return response  # Esce e restituisce la risposta se il codice non è nell'elenco di retry
+                
         except requests.exceptions.RequestException as e:
-            print(f"Errore di connessione: {e}. Retry {attempt+1}/{max_retries}...")
-            time.sleep(3)
+            # --- BLOCCO DIAGNOSTICA ERRORE DI CONNESSIONE ---
+            print("\n" + "!" * 60)
+            print(f"[ERRORE DI CONNESSIONE] Tentativo {attempt+1}/{max_retries} fallito!")
+            print(f"Eccezione: {e}")
+            print("!" * 60 + "\n")
+            # ------------------------------------------------
+            time.sleep(5)
+            
+    return None
 
 
 # Extraction blocks
@@ -654,8 +681,18 @@ def extract_comments_received_local():
             log_failure(username, "failed_comments_received.json")
             continue
 
-        df_posts = pd.read_csv(posts_path)
-        df_comments = pd.read_csv(comments_path)
+        # Gestione sicura dei file vuoti (previene EmptyDataError)
+        try:
+            df_posts = pd.read_csv(posts_path)
+        except pd.errors.EmptyDataError:
+            print(f"[{username}] Warning: posts file is empty. Handling as empty DataFrame.")
+            df_posts = pd.DataFrame()
+
+        try:
+            df_comments = pd.read_csv(comments_path)
+        except pd.errors.EmptyDataError:
+            print(f"[{username}] Warning: comments file is empty. Handling as empty DataFrame.")
+            df_comments = pd.DataFrame()
 
         # 1. Gather all unique IDs owned by the founder (replies to these are "comments received")
         founder_owned_ids = set()
@@ -689,7 +726,9 @@ def extract_comments_received_local():
         print(f"[{username}] Scanning {len(thread_ids_list)} active threads for replies...")
 
         # 3. Query comments for each thread in the window and filter them
+        count = 0
         for thread_id in thread_ids_list:
+            print(f"thread num: {count}\n")
             current_before = before
             while True:
                 params = {
@@ -718,7 +757,7 @@ def extract_comments_received_local():
                 for comment in batch_data:
                     parent_id = comment.get("parent_id")
                     author = comment.get("author")
-                    if parent_id in founder_owned_ids and author != username:
+                    if parent_id in founder_owned_ids:
                         comments_received.append(comment)
 
                 if len(batch_data) < 100:
@@ -726,6 +765,9 @@ def extract_comments_received_local():
 
                 current_before = int(batch_data[-1]["created_utc"]) - 1
                 time.sleep(0.1)
+            
+            count += 1
+            time.sleep(0.2)
 
         # Save extracted comments
         df_comments_received = pd.DataFrame(comments_received)
@@ -832,4 +874,4 @@ def extract_acquaintances_subreddits():
 
 if __name__ == "__main__":
     # Call needed functions here
-    extract_interactions_list()
+    extract_comments_received_local()
