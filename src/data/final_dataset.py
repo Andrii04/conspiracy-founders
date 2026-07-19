@@ -10,10 +10,12 @@ matching_dict_path = "data/interim/matching_dict_optimized.json"
 foundersData_path = "data/interim/foundersData_FINAL.csv"
 foundersFeatures_path = "data/interim/foundersFeatures_FINAL.csv"
 foundersSubredditsObs_path = "data/raw/founders_subreddits_obs.csv"
+foundersConspiracyScores_path = "data/interim/founders_conspiracy_scores.csv"
 
 foundersData = pd.read_csv(foundersData_path)
 foundersFeatures = pd.read_csv(foundersFeatures_path)
 foundersSubredditsObs = pd.read_csv(foundersSubredditsObs_path)
+foundersConspiracyScores = pd.read_csv(foundersConspiracyScores_path)
 
 with open(matching_dict_path, "r") as f:
     matching_dict = json.load(f)
@@ -34,6 +36,7 @@ def create_founder_row(username: str) -> dict:
     foundersData_row = foundersData[foundersData["founders"] == username]
     foundersFeatures_row = foundersFeatures[foundersFeatures["username"] == username]
     foundersSubredditsObs_row = foundersSubredditsObs[foundersSubredditsObs["author"] == username]
+    foundersConspiracyScores_row = foundersConspiracyScores[foundersConspiracyScores["author"] == username]
 
     subreddit_name = foundersData_row["subreddit_name"].iloc[0]
     subreddit_creation_date = foundersData_row["subreddit_creation_date"].iloc[0]
@@ -43,6 +46,32 @@ def create_founder_row(username: str) -> dict:
     
     total_contributions = foundersSubredditsObs_row["total_obs_contributions"].iloc[0]
     subreddits = foundersSubredditsObs_row["subreddits"].iloc[0]
+
+    subreddits_conspiracy_score = foundersConspiracyScores_row["conspiracy_score"].iloc[0]
+
+    # Calcolo manuale dei punteggi accumulati (Proxy temporale del Karma)
+    raw_posts_path = os.path.join(users_folder_path, user_folder_path, f"{username}_posts.csv")
+    raw_comments_path = os.path.join(users_folder_path, user_folder_path, f"{username}_comments.csv")
+    
+    accumulated_post_score = 0
+    if os.path.exists(raw_posts_path):
+        try:
+            df_posts_raw = pd.read_csv(raw_posts_path)
+            if "score" in df_posts_raw.columns:
+                accumulated_post_score = int(df_posts_raw["score"].sum())
+        except Exception:
+            pass
+
+    accumulated_comment_score = 0
+    if os.path.exists(raw_comments_path):
+        try:
+            df_comments_raw = pd.read_csv(raw_comments_path)
+            if "score" in df_comments_raw.columns:
+                accumulated_comment_score = int(df_comments_raw["score"].sum())
+        except Exception:
+            pass
+
+    accumulated_score = accumulated_post_score + accumulated_comment_score
 
     # Determine anchor status and matched companion
     if username in matching_dict:
@@ -67,7 +96,11 @@ def create_founder_row(username: str) -> dict:
         "subreddit_founded" : subreddit_name,
         "founding_date" : subreddit_creation_date,
         "total_contributions" : total_contributions,
-        "subreddits" : subreddits
+        "subreddits" : subreddits,
+        "subreddits_conspiracy_score" : subreddits_conspiracy_score,
+        "accumulated_post_score" : accumulated_post_score,
+        "accumulated_comment_score" : accumulated_comment_score,
+        "accumulated_score" : accumulated_score
     }
 
     for feat_path in [conspiracy_features_path, ratio_features_path, psy_features_path]:
@@ -91,7 +124,11 @@ def create_final_dataset():
 
     df = pd.DataFrame(final_dataset)
     path_out = "data/processed/dataset.csv"
+    
+    # Assicura che la cartella finale esista prima di salvare
+    os.makedirs(os.path.dirname(path_out), exist_ok=True)
     df.to_csv(path_out, index=False)
+    print(f"Dataset unico generato con successo! Shape: {df.shape}")
 
 
 if __name__ == "__main__":

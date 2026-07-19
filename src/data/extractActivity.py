@@ -3,6 +3,7 @@ import pandas as pd
 import time
 import json
 import os
+OBSERVATION_WINDOW_SECONDS = 3 * 30 * 24 * 60 * 60
 
 import urllib3.util
 # urllib3.util.connection.HAS_IPV6 = False
@@ -15,7 +16,6 @@ os.makedirs(FAILED_LOGS_DIR, exist_ok=True)
 
 base_url = "https://arctic-shift.photon-reddit.com"
 
-OBSERVATION_WINDOW_SECONDS = 3 * 30 * 24 * 60 * 60
 
 foundersData_path = "data/interim/foundersData_FINAL.csv"
 foundersData = pd.read_csv(foundersData_path, index_col=0)
@@ -875,3 +875,5 @@ def extract_acquaintances_subreddits():
 if __name__ == "__main__":
     # Call needed functions here
     extract_comments_received_local()
+    extract_acquaintances_histograms_local()
+    extract_acquaintances_subreddits()

@@ -5,6 +5,8 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from empath import Empath
 import os
 import json
+from config import OBSERVATION_WINDOW_SECONDS
+from config import CC_THRESHOLD
 
 # Initialize NLP tools
 print("Loading NLP models...")
@@ -34,8 +36,6 @@ STANDALONE_EMPATH_CATEGORIES = [
     "hate", "swearing_terms", "envy", "exasperation", "contentment", "positive_emotion"
 ]
 
-# CC threshold
-CC_THRESHOLD = 0.02
 
 users_folder_path = "data/raw/FOUNDERS_DATA/"
 path_founders_psy_out = "data/interim/founders_psy_features.csv"

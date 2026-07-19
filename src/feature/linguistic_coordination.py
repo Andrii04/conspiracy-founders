@@ -9,7 +9,17 @@ print("Loading NLP models for linguistic coordination...")
 vader = SentimentIntensityAnalyzer()
 empath = Empath()
 
-TARGET_EMPATH_CATEGORIES = ["fear", "violence", "government", "power", "deception", "anger", "sadness", "nervousness"]
+# All standalone categories requested from the psych features script
+TARGET_EMPATH_CATEGORIES = [
+    "fear", "violence", "power", "deception", "anger", "sadness", "nervousness",
+    "dominant_personality", "pride", "optimism", "shame", "irritability", "trust",
+    "politeness", "sympathy", "cheerfulness", "negative_emotion", "aggression",
+    "hate", "swearing_terms", "envy", "exasperation", "contentment", "positive_emotion"
+]
+
+# Subsets for positive and negative linguistic coordination components
+POSITIVE_CATEGORIES = ["optimism", "trust", "politeness", "sympathy", "cheerfulness", "contentment", "positive_emotion"]
+NEGATIVE_CATEGORIES = ["fear", "violence", "anger", "sadness", "irritability", "negative_emotion", "aggression", "hate", "swearing_terms", "exasperation", "nervousness"]
 
 users_folder_path = "data/raw/FOUNDERS_DATA/"
 matching_dict_path = "data/interim/matching_dict_optimized.json"
@@ -106,11 +116,21 @@ for username in founders:
             f_feats = get_nlp_features(founder_text)
             a_feats = get_nlp_features(acq_text)
             
-            # Build feature vectors for coordination score
+            # 1. Build global feature vectors for total coordination score
             vec_f = np.array([f_feats["vader"]] + [f_feats[c] for c in TARGET_EMPATH_CATEGORIES])
             vec_a = np.array([a_feats["vader"]] + [a_feats[c] for c in TARGET_EMPATH_CATEGORIES])
-            
             coord_score = calculate_coordination(vec_f, vec_a)
+            
+            # 2. Build sub-vectors for positive coordination score
+            vec_f_pos = np.array([f_feats[c] for c in POSITIVE_CATEGORIES])
+            vec_a_pos = np.array([a_feats[c] for c in POSITIVE_CATEGORIES])
+            pos_coord_score = calculate_coordination(vec_f_pos, vec_a_pos)
+            
+            # 3. Build sub-vectors for negative coordination score
+            vec_f_neg = np.array([f_feats[c] for c in NEGATIVE_CATEGORIES])
+            vec_a_neg = np.array([a_feats[c] for c in NEGATIVE_CATEGORIES])
+            neg_coord_score = calculate_coordination(vec_f_neg, vec_a_neg)
+            
             is_cc = cc_map.get(acq_author, False)
             
             # Build output row
@@ -122,6 +142,8 @@ for username in founders:
                 "acquaintance": acq_author,
                 "is_cc": is_cc,
                 "coordination_score": coord_score,
+                "positive_coordination_score": pos_coord_score,
+                "negative_coordination_score": neg_coord_score,
                 "founder_vader": f_feats["vader"],
                 "acq_vader": a_feats["vader"]
             }

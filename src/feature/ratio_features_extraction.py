@@ -3,6 +3,8 @@ import os
 import json
 import numpy as np
 import ast
+from config import OBSERVATION_WINDOW_SECONDS
+from config import CC_THRESHOLD
 
 # Config
 users_folder_path = "data/raw/FOUNDERS_DATA/"
@@ -10,9 +12,6 @@ matching_dict_path = "data/interim/matching_dict_optimized.json"
 
 OBS_SUBREDDITS_PATH = "data/raw/founders_subreddits_obs.csv"
 PREOBS_SUBREDDITS_PATH = "data/interim/foundersFeatures_FINAL.csv"
-
-# CC threshold
-CC_THRESHOLD = 0.02 
 
 # Helpers
 
