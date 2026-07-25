@@ -9,13 +9,15 @@ matching_dict_path = "data/interim/matching_dict_optimized.json"
 
 foundersData_path = "data/interim/foundersData_FINAL.csv"
 foundersFeatures_path = "data/interim/foundersFeatures_FINAL.csv"
-foundersSubredditsObs_path = "data/raw/founders_subreddits_obs.csv"
-foundersConspiracyScores_path = "data/interim/founders_conspiracy_scores.csv"
+foundersSubredditsObs_path = "data/interim/founders_subreddits_obs.csv"
+foundersConspiracyScoresObs_path = "data/interim/founders_conspiracy_scores_obs.csv"
+foundersConspiracyScoresPreObs_path = "data/interim/founders_conspiracy_scores_preobs.csv"
 
 foundersData = pd.read_csv(foundersData_path)
 foundersFeatures = pd.read_csv(foundersFeatures_path)
 foundersSubredditsObs = pd.read_csv(foundersSubredditsObs_path)
-foundersConspiracyScores = pd.read_csv(foundersConspiracyScores_path)
+foundersConspiracyScores_obs = pd.read_csv(foundersConspiracyScoresObs_path)
+foundersConspiracyScores_preobs = pd.read_csv(foundersConspiracyScoresPreObs_path)
 
 with open(matching_dict_path, "r") as f:
     matching_dict = json.load(f)
@@ -33,21 +35,29 @@ def create_founder_row(username: str) -> dict:
     conspiracy_features_path = username + "_conspiracySimilarity_FEATURES.csv"
     psy_features_path = username + "_psy_FEATURES.csv"
     
-    foundersData_row = foundersData[foundersData["founders"] == username]
+    foundersData_row = foundersData[foundersData["founder"] == username]
     foundersFeatures_row = foundersFeatures[foundersFeatures["username"] == username]
     foundersSubredditsObs_row = foundersSubredditsObs[foundersSubredditsObs["author"] == username]
-    foundersConspiracyScores_row = foundersConspiracyScores[foundersConspiracyScores["author"] == username]
+    foundersConspiracyScoresObs_row = foundersConspiracyScores_obs[foundersConspiracyScores_obs["author"] == username]
+    foundersConspiracyScoresPreObs_row = foundersConspiracyScores_preobs[foundersConspiracyScores_preobs["author"] == username]
 
     subreddit_name = foundersData_row["subreddit_name"].iloc[0]
-    subreddit_creation_date = foundersData_row["subreddit_creation_date"].iloc[0]
+    
+    # Estrazione e conversione della data di fondazione del subreddit
+    founding_date_unix = foundersData_row["subreddit_creation_date"].iloc[0]
+    founding_date_datetime = pd.to_datetime(founding_date_unix, unit='s')
     
     active_since_unix = foundersFeatures_row["active since"].iloc[0]
     active_since_datetime = pd.to_datetime(active_since_unix, unit='s')
     
-    total_contributions = foundersSubredditsObs_row["total_obs_contributions"].iloc[0]
-    subreddits = foundersSubredditsObs_row["subreddits"].iloc[0]
+    total_contributions_obs = foundersSubredditsObs_row["total_obs_contributions"].iloc[0]
+    total_contributions_preobs = foundersFeatures_row["num contributions"].iloc[0]
+    subreddits_obs = foundersSubredditsObs_row["subreddits"].iloc[0]
+    subreddits_preobs = foundersFeatures_row["subreddits"].iloc[0]
 
-    subreddits_conspiracy_score = foundersConspiracyScores_row["conspiracy_score"].iloc[0]
+    subreddits_conspiracy_score_obs = foundersConspiracyScoresObs_row["conspiracy_score"].iloc[0]
+    subreddits_conspiracy_score_preobs = foundersConspiracyScoresPreObs_row["conspiracy_score"].iloc[0]
+
 
     # Calcolo manuale dei punteggi accumulati (Proxy temporale del Karma)
     raw_posts_path = os.path.join(users_folder_path, user_folder_path, f"{username}_posts.csv")
@@ -94,10 +104,14 @@ def create_founder_row(username: str) -> dict:
         "active_since_unix" : active_since_unix,
         "active_since_datetime" : active_since_datetime,
         "subreddit_founded" : subreddit_name,
-        "founding_date" : subreddit_creation_date,
-        "total_contributions" : total_contributions,
-        "subreddits" : subreddits,
-        "subreddits_conspiracy_score" : subreddits_conspiracy_score,
+        "founding_date_unix" : founding_date_unix,
+        "founding_date_datetime" : founding_date_datetime,
+        "total_contributions_preobs" : total_contributions_preobs,
+        "subreddits_preobs" : subreddits_preobs,
+        "subreddits_preobs_conspiracy_score" : subreddits_conspiracy_score_preobs,
+        "total_contributions_obs" : total_contributions_obs,
+        "subreddits_obs" : subreddits_obs,
+        "subreddits_obs_conspiracy_score" : subreddits_conspiracy_score_obs,
         "accumulated_post_score" : accumulated_post_score,
         "accumulated_comment_score" : accumulated_comment_score,
         "accumulated_score" : accumulated_score

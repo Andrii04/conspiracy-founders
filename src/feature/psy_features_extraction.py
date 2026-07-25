@@ -5,8 +5,8 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from empath import Empath
 import os
 import json
-from config import OBSERVATION_WINDOW_SECONDS
-from config import CC_THRESHOLD
+
+CC_THRESHOLD = 0.15
 
 # Initialize NLP tools
 print("Loading NLP models...")
@@ -36,7 +36,6 @@ STANDALONE_EMPATH_CATEGORIES = [
     "hate", "swearing_terms", "envy", "exasperation", "contentment", "positive_emotion"
 ]
 
-
 users_folder_path = "data/raw/FOUNDERS_DATA/"
 path_founders_psy_out = "data/interim/founders_psy_features.csv"
 matching_dict_path = "data/interim/matching_dict_optimized.json"
@@ -51,13 +50,35 @@ founders = anchors + candidates
 
 all_founders_profiles = []
 
-# Row-level helpers
+# Helpers per la pulizia dei dati e lettura sicura
+def safe_read_csv(filepath):
+    """Legge un file CSV in modo sicuro gestendo file inesistenti, vuoti (0 byte) o corrotti."""
+    if not os.path.exists(filepath):
+        return None
+    if os.path.getsize(filepath) == 0:
+        return None
+    try:
+        df = pd.read_csv(filepath)
+        if df.empty:
+            return None
+        return df
+    except (pd.errors.EmptyDataError, Exception):
+        return None
+
+def clean_id(val):
+    if pd.isna(val): return ""
+    return str(val).strip()
+
+def is_valid_text(text):
+    s = str(text).strip()
+    return bool(s) and s not in ["[deleted]", "[removed]"]
+
 def get_vader_compound(text):
-    if pd.isna(text) or text == "": return 0.0
+    if not is_valid_text(text): return 0.0
     return vader.polarity_scores(str(text))["compound"]
 
 def get_empath_scores(text):
-    if pd.isna(text) or text == "": 
+    if not is_valid_text(text): 
         return {cat: 0.0 for cat in TARGET_EMPATH_CATEGORIES}
     scores = empath.analyze(str(text), normalize=True)
     if not scores:
@@ -65,7 +86,7 @@ def get_empath_scores(text):
     return {cat: scores.get(cat, 0.0) for cat in TARGET_EMPATH_CATEGORIES}
 
 def get_spacy_features(text):
-    if pd.isna(text) or text == "": 
+    if not is_valid_text(text): 
         return 0, 0, 0.0
     doc = nlp(str(text))
     
@@ -78,7 +99,6 @@ def get_spacy_features(text):
     
     return ner_count, pronoun_count, pronoun_ratio
 
-# Safe aggregations for empty slices
 def safe_mean(series):
     return series.mean() if not series.dropna().empty else 0.0
 
@@ -100,52 +120,48 @@ for username in founders:
     
     # Build CC map for acquaintances
     cc_map = {}
-    if os.path.exists(acq_path):
-        df_acq = pd.read_csv(acq_path)
-        if 'author' in df_acq.columns and 'conspiracy_score' in df_acq.columns:
-            for _, row in df_acq.iterrows():
-                cc_map[str(row['author'])] = float(row['conspiracy_score']) > CC_THRESHOLD
+    df_acq = safe_read_csv(acq_path)
+    if df_acq is not None and 'author' in df_acq.columns and 'conspiracy_score' in df_acq.columns:
+        for _, row in df_acq.iterrows():
+            cc_map[clean_id(row['author'])] = float(row['conspiracy_score']) > CC_THRESHOLD
                 
     # Build target-author map for replies
     target_author_map = {}
-    if os.path.exists(recv_path):
-        df_recv = pd.read_csv(recv_path)
-        if 'name' in df_recv.columns and 'author' in df_recv.columns:
-            for _, row in df_recv.iterrows():
-                target_author_map[str(row['name'])] = str(row['author'])
-    if os.path.exists(posts_comm_path):
-        df_p_comm = pd.read_csv(posts_comm_path)
-        if 'name' in df_p_comm.columns and 'author' in df_p_comm.columns:
-            for _, row in df_p_comm.iterrows():
-                target_author_map[str(row['name'])] = str(row['author'])
+    df_recv = safe_read_csv(recv_path)
+    if df_recv is not None and 'name' in df_recv.columns and 'author' in df_recv.columns:
+        for _, row in df_recv.iterrows():
+            target_author_map[clean_id(row['name'])] = clean_id(row['author'])
+
+    df_p_comm = safe_read_csv(posts_comm_path)
+    if df_p_comm is not None and 'name' in df_p_comm.columns and 'author' in df_p_comm.columns:
+        for _, row in df_p_comm.iterrows():
+            target_author_map[clean_id(row['name'])] = clean_id(row['author'])
 
     texts_data = []
     
     # Load and merge comment texts with CC tag
-    if os.path.exists(comments_path):
-        df_c = pd.read_csv(comments_path)
-        if 'body' in df_c.columns and 'parent_id' in df_c.columns:
-            for _, row in df_c.iterrows():
-                body = str(row['body']) if pd.notna(row['body']) else ""
-                if body.strip() == "": continue
+    df_c = safe_read_csv(comments_path)
+    if df_c is not None and 'body' in df_c.columns and 'parent_id' in df_c.columns:
+        for _, row in df_c.iterrows():
+            body = str(row['body']) if pd.notna(row['body']) else ""
+            if not is_valid_text(body): continue
+            
+            parent_id = clean_id(row['parent_id'])
+            target_author = target_author_map.get(parent_id)
+            is_cc = cc_map.get(target_author, False) if target_author else False
+            
+            texts_data.append({"text": body, "is_cc": is_cc})
                 
-                parent_id = str(row['parent_id'])
-                target_author = target_author_map.get(parent_id)
-                is_cc = cc_map.get(target_author, False) if target_author else False
-                
-                texts_data.append({"text": body, "is_cc": is_cc})
-                
-    # Load and merge post texts
-    if os.path.exists(posts_path):
-        df_p = pd.read_csv(posts_path)
-        if "title" in df_p.columns and "selftext" in df_p.columns:
-            for _, row in df_p.iterrows():
-                title = str(row['title']) if pd.notna(row['title']) else ""
-                body = str(row['selftext']) if pd.notna(row['selftext']) else ""
-                text = f"{title} {body}".strip()
-                if text == "": continue
-                
-                texts_data.append({"text": text, "is_cc": pd.NA})
+    # Load and merge post texts (ora gestito in modo sicuro contro file vuoti)
+    df_p = safe_read_csv(posts_path)
+    if df_p is not None and "title" in df_p.columns and "selftext" in df_p.columns:
+        for _, row in df_p.iterrows():
+            title = str(row['title']) if pd.notna(row['title']) else ""
+            body = str(row['selftext']) if pd.notna(row['selftext']) else ""
+            text = f"{title} {body}".strip()
+            if not is_valid_text(text): continue
+            
+            texts_data.append({"text": text, "is_cc": pd.NA})
                 
     if not texts_data:
         print(f"No valid text found for {username}; skipping.")
@@ -168,21 +184,38 @@ for username in founders:
     mask_cc = df_texts['is_cc'] == True
     mask_non_cc = df_texts['is_cc'] == False
     
-    # Compute linguistic coordination
+    # Compute linguistic coordination (Global, Positive, Negative)
     avg_coord = 0.0
     avg_coord_cc = 0.0
     avg_coord_non_cc = 0.0
     
-    if os.path.exists(coord_path):
-        df_coord = pd.read_csv(coord_path)
-        if 'coordination_score' in df_coord.columns and 'is_cc' in df_coord.columns:
+    avg_pos_coord = 0.0
+    avg_pos_coord_cc = 0.0
+    avg_pos_coord_non_cc = 0.0
+    
+    avg_neg_coord = 0.0
+    avg_neg_coord_cc = 0.0
+    avg_neg_coord_non_cc = 0.0
+    
+    df_coord = safe_read_csv(coord_path)
+    if df_coord is not None and 'is_cc' in df_coord.columns:
+        mask_coord_cc = df_coord['is_cc'] == True
+        mask_coord_non_cc = df_coord['is_cc'] == False
+        
+        if 'coordination_score' in df_coord.columns:
             avg_coord = safe_mean(df_coord['coordination_score'])
-            
-            mask_coord_cc = df_coord['is_cc'] == True
-            mask_coord_non_cc = df_coord['is_cc'] == False
-            
             avg_coord_cc = safe_mean(df_coord[mask_coord_cc]['coordination_score'])
             avg_coord_non_cc = safe_mean(df_coord[mask_coord_non_cc]['coordination_score'])
+            
+        if 'positive_coordination_score' in df_coord.columns:
+            avg_pos_coord = safe_mean(df_coord['positive_coordination_score'])
+            avg_pos_coord_cc = safe_mean(df_coord[mask_coord_cc]['positive_coordination_score'])
+            avg_pos_coord_non_cc = safe_mean(df_coord[mask_coord_non_cc]['positive_coordination_score'])
+            
+        if 'negative_coordination_score' in df_coord.columns:
+            avg_neg_coord = safe_mean(df_coord['negative_coordination_score'])
+            avg_neg_coord_cc = safe_mean(df_coord[mask_coord_cc]['negative_coordination_score'])
+            avg_neg_coord_non_cc = safe_mean(df_coord[mask_coord_non_cc]['negative_coordination_score'])
     
     # Aggregate base founder profile
     founder_profile = {
@@ -207,7 +240,15 @@ for username in founders:
         # Coordination
         "avg_linguistic_coordination": avg_coord,
         "avg_linguistic_coordination_cc": avg_coord_cc,
-        "avg_linguistic_coordination_non_cc": avg_coord_non_cc
+        "avg_linguistic_coordination_non_cc": avg_coord_non_cc,
+        
+        "avg_positive_linguistic_coordination": avg_pos_coord,
+        "avg_positive_linguistic_coordination_cc": avg_pos_coord_cc,
+        "avg_positive_linguistic_coordination_non_cc": avg_pos_coord_non_cc,
+        
+        "avg_negative_linguistic_coordination": avg_neg_coord,
+        "avg_negative_linguistic_coordination_cc": avg_neg_coord_cc,
+        "avg_negative_linguistic_coordination_non_cc": avg_neg_coord_non_cc
     }
     
     # 1. Calculate temporary raw averages for all categories
@@ -240,10 +281,8 @@ for username in founders:
         # Combined unified Self-Esteem metric
         custom_metrics[f"avg_self_esteem{suff}"] = (v("pride") + v("achievement") + v("optimism")) - (v("shame") + v("weakness") + v("disappointment") + v("envy"))
 
-    # Add custom features to profile
     founder_profile.update(custom_metrics)
     
-    # Add standalone categories to profile (using the clean avg_ name mapping)
     for cat in STANDALONE_EMPATH_CATEGORIES:
         founder_profile[f"avg_{cat}"] = raw_means[cat]
         founder_profile[f"avg_{cat}_cc"] = raw_means_cc[cat]
@@ -251,12 +290,10 @@ for username in founders:
         
     all_founders_profiles.append(founder_profile)
 
-    # Save single founder CSV
     founder_psy_path = os.path.join(founder_folder, f"{username}_psy_FEATURES.csv")
     df_single_founder = pd.DataFrame([founder_profile])
     df_single_founder.to_csv(founder_psy_path, index=False)
 
-# Save global dataset
 if len(all_founders_profiles) == len(founders):
     print("All founders processed.")
 else:
@@ -268,4 +305,3 @@ if all_founders_profiles:
     print(f"Aggregated profiles saved to: {path_founders_psy_out}")
 else:
     print("No data extracted.")
-

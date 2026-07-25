@@ -1,8 +1,6 @@
 import pandas as pd
 import json
 import ast  
-from config import OBSERVATION_WINDOW_SECONDS
-from config import CC_THRESHOLD
 
 
 

@@ -2,12 +2,11 @@ import pandas as pd
 import json
 import ast
 import os
-from config import OBSERVATION_WINDOW_SECONDS
-from config import CC_THRESHOLD
+
 
 matching_dict_path = "data/interim/matching_dict_optimized.json"
 users_folder_path = "data/raw/FOUNDERS_DATA/"
-founders_subreddits_obs_path = "data/raw/founders_subreddits_obs.csv"
+foundersFeatures_path = "data/interim/foundersFeatures_FINAL.csv"
 
 # Percorso di output per il dataset unico dei founder
 path_founders_scores_out = "data/interim/founders_conspiracy_scores.csv"
@@ -26,7 +25,7 @@ candidates = [candidate["candidate"] for candidate in matching_dict.values()]
 founders = anchors + candidates
 
 # Carica il dataset centralizzato dei subreddit osservati per i founder
-df_founders_obs = pd.read_csv(founders_subreddits_obs_path)
+df_founders_features = pd.read_csv(foundersFeatures_path)
 
 
 def give_score(subreddits):
@@ -64,7 +63,7 @@ def founder_conspiracy_score():
     for username in founders:
         
         # Filtra la riga corrispondente al founder corrente nel file osservato
-        founder_row = df_founders_obs[df_founders_obs["author"] == username]
+        founder_row = df_founders_features[df_founders_features["username"] == username]
         
         if founder_row.empty:
             print(f"Dati di osservazione non trovati per {username}, salto.")

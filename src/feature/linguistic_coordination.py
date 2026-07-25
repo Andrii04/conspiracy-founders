@@ -5,11 +5,13 @@ from empath import Empath
 import os
 import json
 
+CC_THRESHOLD = 0.15
+
 print("Loading NLP models for linguistic coordination...")
 vader = SentimentIntensityAnalyzer()
 empath = Empath()
 
-# All standalone categories requested from the psych features script
+# Standalone categories for NLP feature vectors
 TARGET_EMPATH_CATEGORIES = [
     "fear", "violence", "power", "deception", "anger", "sadness", "nervousness",
     "dominant_personality", "pride", "optimism", "shame", "irritability", "trust",
@@ -31,9 +33,33 @@ anchors = list(matching_dict.keys())
 candidates = [candidate["candidate"] for candidate in matching_dict.values()]
 founders = anchors + candidates
 
-# Extract NLP features for one text
+def safe_read_csv(filepath):
+    """Legge un file CSV in modo sicuro gestendo file inesistenti, vuoti o corrotti."""
+    if not os.path.exists(filepath):
+        return None
+    if os.path.getsize(filepath) == 0:
+        return None
+    try:
+        df = pd.read_csv(filepath)
+        if df.empty:
+            return None
+        return df
+    except (pd.errors.EmptyDataError, Exception):
+        return None
+
+def clean_id(val):
+    """Converte in stringa pulita ed elimina spazi vuoti."""
+    if pd.isna(val): return ""
+    return str(val).strip()
+
+def is_valid_text(text):
+    """Verifica se il testo è valido per l'analisi NLP."""
+    s = str(text).strip()
+    return bool(s) and s not in ["[deleted]", "[removed]"]
+
 def get_nlp_features(text):
-    if pd.isna(text) or str(text).strip() == "":
+    """Estrae le feature VADER ed Empath per un testo."""
+    if not is_valid_text(text):
         features = {"vader": 0.0}
         for cat in TARGET_EMPATH_CATEGORIES:
             features[cat] = 0.0
@@ -48,8 +74,8 @@ def get_nlp_features(text):
         
     return features
 
-# Compute linguistic coordination (cosine similarity)
 def calculate_coordination(vec1, vec2):
+    """Calcola la Cosine Similarity tra due vettori."""
     if np.all(vec1 == 0) or np.all(vec2 == 0): 
         return 0.0
     dot_product = np.dot(vec1, vec2)
@@ -70,74 +96,89 @@ for username in founders:
     
     out_path = os.path.join(founder_folder, f"{username}_linguisticCoordination.csv")
     
-    if not os.path.exists(comments_path):
-        print(f"No reply comments found for {username}; skipping.")
+    # Caricamento sicuro dei commenti del founder
+    df_comments = safe_read_csv(comments_path)
+    if df_comments is None:
+        print(f"No valid/non-empty reply comments found for {username}; skipping.")
         continue
         
     # Map acquaintance CC status
     cc_map = {}
-    if os.path.exists(acq_scores_path):
-        df_scores = pd.read_csv(acq_scores_path)
-        if "author" in df_scores.columns and "conspiracy_score" in df_scores.columns:
-            for row in df_scores.itertuples():
-                # Mark as CC when score > 0.5
-                cc_map[str(row.author)] = float(row.conspiracy_score) > 0.5
+    df_scores = safe_read_csv(acq_scores_path)
+    if df_scores is not None and "author" in df_scores.columns and "conspiracy_score" in df_scores.columns:
+        for row in df_scores.itertuples():
+            cc_map[clean_id(row.author)] = float(row.conspiracy_score) > CC_THRESHOLD
                 
-    # Map parent id to replied text and author
+    # Map parent fullname (t1_... o t3_...) to replied text and author
     parents_dict = {}
     
-    if os.path.exists(comments_recv_path):
-        df_recv = pd.read_csv(comments_recv_path)
+    # 1. Carica commenti ricevuti
+    df_recv = safe_read_csv(comments_recv_path)
+    if df_recv is not None:
         for row in df_recv.itertuples():
-            parents_dict[str(row.name)] = {"author": str(row.author), "text": str(row.body)}
+            fullname = clean_id(getattr(row, 'name', ''))
+            author = clean_id(getattr(row, 'author', ''))
+            body = getattr(row, 'body', '')
+            if fullname and is_valid_text(body):
+                parents_dict[fullname] = {"author": author, "text": str(body)}
             
-    if os.path.exists(posts_commented_path):
-        df_posts = pd.read_csv(posts_commented_path)
+    # 2. Carica post di conoscenti che il founder ha commentato
+    df_posts = safe_read_csv(posts_commented_path)
+    if df_posts is not None:
         for row in df_posts.itertuples():
-            title = str(row.title) if pd.notna(row.title) else ""
-            body = str(row.selftext) if pd.notna(row.selftext) else ""
-            parents_dict[str(row.name)] = {"author": str(row.author), "text": title + " " + body}
+            fullname = clean_id(getattr(row, 'name', ''))
+            author = clean_id(getattr(row, 'author', ''))
+            title = str(row.title) if pd.notna(getattr(row, 'title', None)) else ""
+            body = str(row.selftext) if pd.notna(getattr(row, 'selftext', None)) else ""
+            combined_text = f"{title} {body}".strip()
             
-    df_comments = pd.read_csv(comments_path)
+            if fullname and is_valid_text(combined_text):
+                parents_dict[fullname] = {"author": author, "text": combined_text}
+            
     interactions_data = []
     
-    # Iterate founder comments
+    # Processa i commenti scritti dal Founder
     for row in df_comments.itertuples():
-        parent_id = str(row.parent_id)
+        parent_id = clean_id(getattr(row, 'parent_id', ''))
+        founder_text = getattr(row, 'body', '')
         
-        # Keep only tracked reply interactions
-        if parent_id in parents_dict:
+        # Mantiene solo interazioni di risposta tracciate e con testo valido
+        if parent_id in parents_dict and is_valid_text(founder_text):
             acq_data = parents_dict[parent_id]
             acq_author = acq_data["author"]
             
-            founder_text = str(row.body)
+            # FILTRO AUTO-RISPOSTE: Esclude i casi in cui il founder risponde a se stesso
+            if acq_author.lower() == username.lower():
+                continue
+                
             acq_text = acq_data["text"]
             
             f_feats = get_nlp_features(founder_text)
             a_feats = get_nlp_features(acq_text)
             
-            # 1. Build global feature vectors for total coordination score
+            # 1. Vettori globali
             vec_f = np.array([f_feats["vader"]] + [f_feats[c] for c in TARGET_EMPATH_CATEGORIES])
             vec_a = np.array([a_feats["vader"]] + [a_feats[c] for c in TARGET_EMPATH_CATEGORIES])
             coord_score = calculate_coordination(vec_f, vec_a)
             
-            # 2. Build sub-vectors for positive coordination score
+            # 2. Vettori pos
             vec_f_pos = np.array([f_feats[c] for c in POSITIVE_CATEGORIES])
             vec_a_pos = np.array([a_feats[c] for c in POSITIVE_CATEGORIES])
             pos_coord_score = calculate_coordination(vec_f_pos, vec_a_pos)
             
-            # 3. Build sub-vectors for negative coordination score
+            # 3. Vettori neg
             vec_f_neg = np.array([f_feats[c] for c in NEGATIVE_CATEGORIES])
             vec_a_neg = np.array([a_feats[c] for c in NEGATIVE_CATEGORIES])
             neg_coord_score = calculate_coordination(vec_f_neg, vec_a_neg)
             
             is_cc = cc_map.get(acq_author, False)
             
-            # Build output row
+            comment_reddit_id = clean_id(getattr(row, 'name', getattr(row, 'id', '')))
+            
             row_data = {
-                "interaction_id": row.name,
+                "interaction_id": comment_reddit_id,
                 "parent_id": parent_id,
-                "link_id": row.link_id,
+                "link_id": clean_id(getattr(row, 'link_id', '')),
                 "founder": username,
                 "acquaintance": acq_author,
                 "is_cc": is_cc,
@@ -148,14 +189,12 @@ for username in founders:
                 "acq_vader": a_feats["vader"]
             }
             
-            # Add Empath feature pairs
             for cat in TARGET_EMPATH_CATEGORIES:
                 row_data[f"founder_empath_{cat}"] = f_feats[cat]
                 row_data[f"acq_empath_{cat}"] = a_feats[cat]
                 
             interactions_data.append(row_data)
             
-    # Save dataset
     if interactions_data:
         df_coord = pd.DataFrame(interactions_data)
         df_coord.to_csv(out_path, index=False)
